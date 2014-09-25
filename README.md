@@ -6,7 +6,7 @@ This package provides a set of tools for data conversion and analysis of RAD (re
 
 To clone:
 
-    git clone https://github.com/har-wradim/radtools.git
+    git clone https://github.com/evoeco/radtools.git
 
 
 stacks2fasta
