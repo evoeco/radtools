@@ -1,12 +1,30 @@
+#!/usr/bin/Rscript
+
 #Supplemental Script 1. R script for the simulation of the DBR success
+
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) != 4) {
+  write("Use as follows:", stderr())
+  write("DBR_simulation.R <number of DBRs> <targe coverage> <number of permutations> <output png file>", stderr())
+  quit(status=1)
+}
+
+
 #n = Number of small fragments (DBRs) to be ligated to genomic libraries
-n<-122888
+#n<-122888
+n<-as.integer(args[1])
 
 #C = Target coverage for the RAD libraries 
-C<-20
+#C<-20
+C<-as.integer(args[2])
 
 #perm = Number of different permutations used for the calculation
-perm<-20000
+#perm<-200
+perm<-as.integer(args[3])
+
+#Output filename
+png<-args[4]
 
 #Distribution of the different recovered DBRs
 distribution<-data.frame()
@@ -22,8 +40,11 @@ for (i in 1:perm){
   }
   distribution[i,1]<-length(unique(drawing))
   rm(drawing)
-  print(i)
+  cat(i, "\r", file = stderr())
 }
+cat("\n", file = stderr())
+
+png(paste(png,".png",sep=""))
 
 #Result tables 
 sor <- rle(sort(distribution$V1))
@@ -50,3 +71,4 @@ Cov = "Coverage = "
 DBRs= ", n = "
 text=paste(Cov, C, DBRs, n, sep="")
 title(text)
+
