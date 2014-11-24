@@ -18,10 +18,10 @@
 use strict;
 use warnings;
 
-my $ver = "2.1";
+my $ver = "2.2";
 print STDERR "This is stacks2fasta script ver. $ver\n";
 print STDERR "Written by Andrey Rozenberg, Ruhr-Universitaet Bochum and distributed under GNU GPL v. 3\n";
-print STDERR "If you decide to use this program for your next paper, we recommend you to cite it as follows:
+print STDERR "Cite as:
 Macher J et al (2014). Assessing the phylogeographic history of the montane caddisfly Thremma gallicum using mitochondrial and restriction-site associated DNA (RAD) markers. Ecology and Evolution, accepted\n";
 my @cols;
 my %outgs;
@@ -194,14 +194,12 @@ if ($#ARGV > 0) {
 		die "$key: unknown parameter\n";
 	}
 }
-
 my %callargs = (
 	arp => \&args_arp,
 	snp => \&args_snp,
 	pop => \&args_pop,
 	ped => \&args_ped,
 );
-
 my %callprocess = (
 	fa  => \&process_fa,
 	arp => \&process_arp,
@@ -211,7 +209,6 @@ my %callprocess = (
 	nex => \&process_nex,
 	ped => \&process_ped,
 );
-
 my %callbottom = (
 	fa  => \&bottom_fa,
 	arp => \&bottom_arp,
@@ -232,10 +229,11 @@ if ($nodoubles) {
 	$major = 1;
 }
 
-
 ## END parse arguments
 
 ## BEGIN subs
+
+## argument parsing callbacks for different formats
 
 sub args_arp {
 	die "For output in Arlequin format you have to specify -fill\n" if $fill eq '';
@@ -258,6 +256,7 @@ sub args_ped {
 	$phased = 1;
 }
 
+## processing callbacks for different formats
 sub process_fa  {
 	push(@output,  [@chr1]);
 }
@@ -286,6 +285,7 @@ sub process_ped {
 	push(@loci, $locus);
 }
 
+## parse the header line of the input
 sub parse_header {
 	my $header = shift;
 	chomp $header;
@@ -314,6 +314,7 @@ sub parse_header {
 	return 1;
 }
 
+## no data available for this individual at the current locus
 sub no_data {
 	my $g_count = shift;
 	if ($fill) {
@@ -333,6 +334,7 @@ sub no_data {
 	}
 }
 
+## the genotype is identical to the reference
 sub like_in_consensus {
 	my $g_count = shift;
 	$current_homoz[$g_count] = 1;
@@ -349,6 +351,7 @@ sub like_in_consensus {
 	@{$chr1[$g_count]} = ($seq) if $phased;
 }
 
+## parse the SNPs column
 sub parse_snps {
 	@snps = split(/;/, shift);
 	foreach my $snp (@snps) {
@@ -358,6 +361,7 @@ sub parse_snps {
 	$len = $snps_only ? $#snps+1 : length($consensus);
 }
 
+## parse the alleles column
 sub parse_alleles {
 	my @alleles = split(/\//, shift);
 	return 0 if $#alleles > $ploidy_df;
@@ -386,6 +390,7 @@ sub parse_alleles {
 	return 1;
 }
 
+# build sequences from consensus and respective SNPs
 sub build_seq {
 	my @genotype = @_;
 	my $seq = $consensus;
@@ -395,6 +400,7 @@ sub build_seq {
 	return $seq;
 }
 
+# merge two alleles into one sequence with ambiguities
 sub make_ambig {
 	my ($_a, $_b) = @_;
 	my @a = @$_a;
@@ -407,27 +413,17 @@ sub make_ambig {
 	return @a;
 }
 
-sub convert_snps {
-	my $a = shift;
-	return (9) if substr($a, 0, 1) eq $fill;
-	my $b = shift;
-	return (0) if $a eq $all_alleles[0] and $b eq $all_alleles[0];
-	return (2) if $a eq $all_alleles[1] and $b eq $all_alleles[1];
-	return (1) if $a eq $all_alleles[1] and $b eq $all_alleles[0] || $a eq $all_alleles[0] and $b eq $all_alleles[1];
-	print  STDERR join(", ", keys %actual_alleles)."\n";
-	printf STDERR "'%s' eq '%s' and '%s' eq '%s'", $a, $all_alleles[0], $b, $all_alleles[1];
-	exit;
-}
-
+# filter genotypic data for the current locus: break into SNPs, discard doubles etc
 sub filter_output {
-	return if !$explode && !$major && !$nodoubles && !$encode_snp;
+	return 1 if !$explode && !$major && !$nodoubles && !$encode_snp;
 	my @alleles;
 	my @patterns;
 	my @prev_snps;
 	my @out1;
 	my @out2;
 	my @first_states;
-	
+
+	## iterate over the individuals
 	foreach my $i (@chosen_specimens) {
 		@{$out1[$i]} = $explode ? split("", $chr1[$i][0]) : ($chr1[$i]);
 		@{$out2[$i]} = $explode ? split("", $chr2[$i][0]) : ($chr2[$i]) if $phased;
@@ -455,6 +451,7 @@ sub filter_output {
 			}
 		}
 	}
+	## filtering out of the SNPs with minor alleles
 	if ($major) {
 		for my $k (0..$#{$out1[$first_specimen]}) {
 			my $c = 0;
@@ -469,6 +466,7 @@ sub filter_output {
 			delete $patterns[$k];
 		}
 	}
+	## if SNPs with identical patterns need to be filtered out
 	if ($nodoubles) {
 		foreach my $k1 (0..$#patterns - 1) {
 			next if !$patterns[$k1];
@@ -482,10 +480,13 @@ sub filter_output {
 			}
 		}
 	}
+	return 0 if !@{out1[$first_specimen]};
 	@chr1 = @out1;
 	@chr2 = @out2 if $phased;
+	return 1;
 }
 
+## callbacks to be launched after the input has been processed
 sub bottom_fa {
 	foreach my $i (@chosen_specimens) {
 		printf ">%s\n", $specimens[$i];
@@ -494,7 +495,6 @@ sub bottom_fa {
 		}
 	}
 }
-
 sub bottom_arp {
 	printf "[Profile]
 	Title=\"Stacks output\"
@@ -528,7 +528,6 @@ sub bottom_arp {
 	SampleData={\n%s}\n", $pop, $sample_sizes{$pop}, $data;
 	}
 }
-
 sub bottom_snp {
 	print "<NM=1.0NF> SNP data prepared from Stacks output\nIND   SEX   POP";
 	for my $loc (0..$count - 1) {
@@ -558,7 +557,6 @@ sub bottom_snp {
 		print "\n";
 	}
 }
-
 sub bottom_pop {
 	print "<NM=1.0NF> SNP data prepared from Stacks output\n";
 
@@ -587,7 +585,6 @@ sub bottom_pop {
 		printf "POP\n%s", $data;
 	}
 }
-
 sub bottom_ped {
 	my @snp_data_l;
 	my @snp_data_r;
@@ -609,7 +606,6 @@ sub bottom_ped {
 		print "\n";
 	}
 }
-
 sub bottom_meg {
 	print "#mega
 !Title Stacks output;
@@ -623,7 +619,6 @@ sub bottom_meg {
 		}
 	}
 }
-
 sub bottom_nex {
 	printf "#NEXUS
 begin taxa;
@@ -662,6 +657,7 @@ else {
 my $header = <$fh>;
 die("The input seems to have incorrect format\n") if !parse_header($header);
 
+## reading the input data
 ROW: while (<$fh>) {
 	chomp;
 	@cols = split(/\t/);
@@ -675,18 +671,22 @@ ROW: while (<$fh>) {
 	$lim_stack = 0;
 	@current_heteroz = ();
 	@current_homoz = ();
+	## iterate over genotypes
 	foreach my $genotype (@genotypes) {
 		$g_count++;
 		next if defined($exclude_tax[$g_count]);
+		## if no genotype is specified
 		if (!defined($genotype) || $genotype eq '') {
 			next ROW if $include_tax[$g_count];
 			no_data($g_count);
 		}
 		else {
 			$lim_stack++;
+			## if the genotype is like in consensus
 			if ($genotype eq 'consensus') {
 				like_in_consensus($g_count);
 			}
+			## if the genotype is specified explicitely
 			else {
 				next ROW if !parse_alleles($genotype, $g_count);
 			}
@@ -695,15 +695,19 @@ ROW: while (<$fh>) {
 		}
 	}
 	@all_alleles = keys %actual_alleles;
+	## skip the locus if it doesn't satisfy our criteria
 	next if !$include_fixed && !$#all_alleles;
 	next if $allmax > 0 && ($#all_alleles <= $allmin || $#all_alleles + 1 > $allmax);
 	next if $lim_stack < $limit;
 
+	## filter the output and call the processing sub
+	next if !filter_output();
+
 	$polymorphic += ($#all_alleles > 0);
 	$locus = $.;
-	filter_output();
 	$callprocess{$format}->($.) if defined($callprocess{$format});
 
+	## increment zygosities
 	foreach my $i (@chosen_specimens) {
 		$homoz[$i]   += defined($current_homoz[$i])   ? $current_homoz[$i]   : 0;
 		$heteroz[$i] += defined($current_heteroz[$i]) ? $current_heteroz[$i] : 0;
@@ -716,12 +720,15 @@ ROW: while (<$fh>) {
 	%actual_alleles = ();
 }
 
+## calculate total length of the alignment
 for my $loc (0..$count-1) {
 	$total_len += length(join("", @{$output[$loc][$first_specimen]}));
 }
 
+## call the bottom callback
 $callbottom{$format}->() if defined($callbottom{$format}) && @output;
 
+## print the summary
 printf STDERR "Done: %d lines, %d loci, %d total length", $totalcount, $count, $total_len;
 printf STDERR ", %d polymorphic loci", $polymorphic if $include_fixed;
 printf STDERR "\nNum\tName\tHomozygotes\tHeterozygotes\n", $totalcount, $count;
