@@ -31,7 +31,7 @@ Arguments:
 	-l  - minimal input sequence length for digest
 	-fa - input data in (optionally gzipped) fasta format ('-' for STDIN)
 	-fq - input data in (optionally gzipped) fastq format ('-' for STDIN)
-        -no - remove N's before cutting the sequences\n";
+        -no - remove N's before cutting the sequences (y/n)\n";
 	exit 0;
 }
 
@@ -78,7 +78,8 @@ if (defined($args{-l})) {
 	delete($args{-l});
 }
 if (defined($args{-no})) {
-	$no = $args{-no};
+	($args{-no} ne "y" && $args{-no} ne "n") && die("Incorrect -no\n");
+	$no = ($args{-no} eq "y");
 	delete($args{-no});
 }
 if (defined($args{-fa})) {
@@ -102,7 +103,7 @@ sub gc {
 	my $dna = shift;
 	$dna =~ s/[^ACGTSW]//g;
 	my $len = length($dna);
-	$dna =~ s/[CGS]//g;
+	$dna =~ s/[ATW]//g;
 	my $gc  = length($dna);
 	return ($len, $gc);
 }
@@ -302,7 +303,7 @@ printf STDERR "Mean length (SD) - %.1f (%.2f)\n", $len_total / $seq_n, stdev($se
 printf STDERR "GC%% - %.3f\n", $gcf;
 
 if ($t eq "ldist") {
-	printf "%s\t%s\t%s\t%s\t%s\n", "R1", "R2", "Mean len", "SD", "N";
+	printf "%s\t%s\t% 8s\t% 8s\t% 8s\n", "R1", "R2", "Mean len", "SD", "N";
 	foreach my $p1 (@pat1) {
 		foreach my $p2 (@pat2) {
 			printf "%s\t%s\t", $enz{$p1}, $enz{$p2};
@@ -312,7 +313,7 @@ if ($t eq "ldist") {
 			}
 			my $n = $frag_n{$p1}{$p2};
 			my $s = $frag_total{$p1}{$p2};
-			printf "%.2f\t%.2f\t%d\n", $s / $n, stdev($n, $s, $frag_total_sq{$p1}{$p2}), $n;
+			printf "% 8.2f\t% 8.2f\t% 8d\n", $s / $n, stdev($n, $s, $frag_total_sq{$p1}{$p2}), $n;
 		}
 	}
 }
@@ -333,16 +334,6 @@ elsif ($t eq "dist") {
 		my $obs_raw   = defined($counts{$p}) ? $counts{$p} : 0;
 		my $obs       = $obs_raw / $len_total;
 		printf "%s\t% 7d\t%f\t% 9.1f\t% 7.f\t%f\t% 9.1f\n", $enz{$p}, $obs_raw, $obs, $obs * 1000000, $exp_raw, $exp, $exp * 1000000;
-	}
-}
-elsif ($t eq "ldis") {
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Enzyme", "Obs occ", "Obs freq", "Obs fr/Mb", "Exp occ", "Exp freq", "Exp fr/Mb";
-	while (my ($p1, $counts_p2) = each %counts) {
-		while (my ($p2, $counts_len) = each %{$counts_p2}) {
-			while (my ($len, $count) = each %{$counts_len}) {
-				printf "%s\t%s\t%d\t%d\n", $enz{$p1}, $enz{$p2}, $len, $count;
-			}
-		}
 	}
 }
 
