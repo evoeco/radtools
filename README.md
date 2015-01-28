@@ -12,7 +12,6 @@ To install/update all of the tools - clone the repository and copy the scripts t
 
         git clone https://github.com/evoeco/radtools.git
         sudo cp radtools/perl/* /usr/local/bin
-        sudo cp radtools/bash/* /usr/local/bin
 
 stacks2fasta
 --------------

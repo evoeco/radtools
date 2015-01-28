@@ -20,28 +20,35 @@ use warnings;
 
 my %args = @ARGV;
 
+my $verion = "1.2";
+
 if (!@ARGV or defined($args{-h}) or defined($args{-v})) {
-	print STDERR "Usage:
-	perl preprocess_ddradtags.pl arguments
-	
-	Obligate arguments:
-	-l : left fq-file
-	-r : right fq-file
-	-b : barcode file
-		Each line in this fiel is expected to represent the barcode sequence (with respective Ins concatenated), the presence-of-DBR-flag (1/0) and DBR offset (lengths of P7 Ins)
-		The first line may optionally contain the actual length of the barcode itself. 
-	-i : DBR sequence
-		The standard IUPAC codes are expected to denote variable positions
-	Optional arguments:
-	-m : matching length
- 	-x : mismatches in DBR
- 	-y : mismatches in barcode
-	-s : P7 shift
-	-t : tolerated barcode shift
-	-lt : left trim size
-	-rt : right trim size
-	-lrest : left restriction site
-	-rrest : right restriction site
+	print STDERR "preprocess_ddradtags.pl version $verion
+Use as:
+  preprocess_ddradtags.pl [arguments]
+
+  Mandatory arguments:
+       -l : left fq-file
+       -r : right fq-file
+       -b : barcode file
+              Each line in this file is expected to represent the barcode sequence (with respective Ins concatenated),
+              the presence-of-DBR-flag (1/0) and DBR offset (lengths of P7 Ins).
+              The first line may optionally contain the actual length of the barcode itself. 
+       -i : DBR sequence
+              The standard [IUPAC codes](http://www.bioinformatics.org/sms/iupac.html) are expected to denote variable positions
+
+  Optional arguments:
+       -m : matching length
+       -x : allowed mismatches in DBR
+       -y : allowed mismatches in barcode
+       -s : P7 shift
+       -t : tolerated barcode shift
+      -lt : trim the left  sequences to this length
+      -rt : trim the right sequences to this length
+   -lrest : check for the presence of this overhang for the left  restrictase
+   -rrest : check for the presence of this overhang for the right restrictase
+      -gz : gzip output files (y/n) [y]
+   -nodup : don't search for duplicates (y/n) [n]
 ";
 	exit();
 }
@@ -54,6 +61,7 @@ my $y = 1;
 my $t = 1;
 my $lt = 90;
 my $rt = 90;
+my $gz = 'y';
 
 my %skipped;
 my %dbrs;
@@ -144,12 +152,22 @@ if (defined($args{-rrest})) {
 	die("Invalid restriction site '$rrest'") if ($lrest !~ /^[ATGC]+$/);
 	delete($args{-rrest});
 }
+if (defined($args{-gz})) {
+	$gz = $args{-gz};
+	die("Invalid choice '$gz' for -gz") if $gz ne 'y' && $gz ne 'n';
+	delete($args{-gz});
+}
+if (defined($args{-nodup})) {
+	$nodup = $args{-gz};
+	die("Invalid choice '$nodup' for -nodup") if $nodup ne 'y' && $nodup ne 'n';
+	delete($args{-nodup});
+}
 foreach my $key (keys %args) {
 	print STDERR "$key: unknown parameter\n";
 	exit();
 }
 
-print STDERR "The script was launched as: -l $lfile -r $rfile -b $bfile -i $orig_dbr -m $m -x $x -y $y -s $s -t $t -lt $lt -rt $rt -lrest $lrest -lrest $rrest\n";
+print STDERR "The script was launched as: -l $lfile -r $rfile -b $bfile -i $orig_dbr -m $m -x $x -y $y -s $s -t $t -lt $lt -rt $rt -lrest $lrest -lrest $rrest -gz $gz -nodup $nodup\n";
 
 my $m2 = $m * 2;
 
@@ -185,7 +203,7 @@ sub read_barcodes {
  			$bl = $line;
 			next;
 		}
-		die("The barcode file has incorrect format. Three fields expected: the barcode, the presence-of-DBR-flag, P7 offset") if ($line !~ /^[ATGCX]+\s+(1|0)\s+\d(\s+\w+)?$/);
+		die("The barcode file has incorrect format. Three fields expected: the barcode, the presence-of-DBR-flag, P7 offset\n") if ($line !~ /^[ATGCX]+\s+(1|0)\s+\d(\s+\w+)?$/);
 		@parts = split ' ', $line;
 		$b = $parts[0];
 		push(@all_barcodes, $b);
@@ -242,7 +260,7 @@ sub read_dbr {
 	$icut = length($var_dbr) - length($orig_dbr);
 	my @i_bases = split //, $orig_dbr;
 	while (my ($pos, $i_base) = each @i_bases) {
-		next if ($i_base eq 'N');
+		next if $i_base eq 'N';
 		$i_base =~ tr/ACGTRYMKBDHVYRKM/BDHVYRKMACGTRYMK/;
 		push(@i_rescue, prepare_dbr(substr($orig_dbr, 0, $pos).$i_base.substr($orig_dbr, $pos + 1)) );
 	}
@@ -295,6 +313,7 @@ sub find_dbr {
 
 ## detect if this is a duplicate ##
 sub is_duplicate {
+	return 1 if $nodup eq 'n';
 	$seq = shift;
 	$subseq1 = substr($seq, 0,  $m);
 	$subseq2 = substr($seq, $m, $m);
@@ -328,13 +347,40 @@ sub is_duplicate {
 	return (++$uniq{$b_chosen}[$locus]{$i_chosen} > 1);
 }
 
+sub openin {
+	my $fname = shift;
+	my $fp;
+	if ($fname =~ /\.gz$/) {
+		open($fp, "gzip -cd $fname |") or die($!);
+	}
+	else {
+		open($fp, "<",  $fname) or die($!);
+	}
+	return $fp;
+}
+
+sub openout {
+	my $fname = shift;
+	my $gz = shift;
+	my $fp;
+	if ($gz eq 'y') {
+		open($fp, "| gzip -c > $fname.gz") or die($!);
+	}
+	else {
+		open($fp, ">", $fname) or die($!);
+	}
+	return $fp;
+}
+
 ## END SUBS ##
 
 read_barcodes();
 read_dbr();
 
-open(LIN,  "<",  $lfile) or die($!);
-open(RIN,  "<",  $rfile) or die($!);
+## BEGIN FILES ##
+
+my $lin = openin($lfile);
+my $rin = openin($rfile);
 
 my (%LABB, %RABB, %LWBI, %RWBI, %LXBI, %RXBI, %LNOI, %RNOI, $LWOB, $RWOB, %LWOI, %RWOI, %LRUR, %RRUR, %LLUR, %RLUR);
 
@@ -342,42 +388,43 @@ foreach my $k (0..$#barcodes) {
 	$b = $barcodes[$k];
 	my $lfix = defined($barcode_names{$b}) ? $barcode_names{$b}.".l" : "$lfile.$b";
 	my $rfix = defined($barcode_names{$b}) ? $barcode_names{$b}.".r" : "$rfile.$b";
-	
-	open($LABB{$b}, ">", "$lfix.abb") or die($!);
-	open($RABB{$b}, ">", "$rfix.abb") or die($!);
+	$LABB{$b} = openout("$lfix.abb", $gz);
+	$RABB{$b} = openout("$rfix.abb", $gz);
 	
 	if ($no_dbrs[$k]) {
-		open($LNOI{$b}, ">", "$lfix.noi") or die($!);
-		open($RNOI{$b}, ">", "$rfix.noi") or die($!);
+		$LNOI{$b} = openout("$lfix.noi", $gz);
+		$RNOI{$b} = openout("$rfix.noi", $gz);
 	}
 	else {
-		open($LWBI{$b}, ">", "$lfix.wbi") or die($!);
-		open($RWBI{$b}, ">", "$rfix.wbi") or die($!);
-		open($LWOI{$b}, ">", "$lfix.woi") or die($!);
-		open($RWOI{$b}, ">", "$rfix.woi") or die($!);
+		$LWBI{$b} = openout("$lfix.wbi", $gz);
+		$RWBI{$b} = openout("$rfix.wbi", $gz);
+		$LWOI{$b} = openout("$lfix.woi", $gz);
+		$RWOI{$b} = openout("$rfix.woi", $gz);
 		if ($s) {
-			open($LXBI{$b}, ">", "$lfix.xbi") or die($!);
-			open($RXBI{$b}, ">", "$rfix.xbi") or die($!);
+			$LXBI{$b} = openout("$lfix.xbi", $gz);
+			$RXBI{$b} = openout("$rfix.xbi", $gz);
 		}
 	}
 	if ($rrest) {
-		open($LRUR{$b}, ">", "$rfix.rur") or die($!);
-		open($RRUR{$b}, ">", "$lfix.rur") or die($!);
+		$LRUR{$b} = openout("$rfix.rur", $gz);
+		$RRUR{$b} = openout("$lfix.rur", $gz);
 	}
 	if ($lrest) {
-		open($LLUR{$b}, ">", "$rfix.lur") or die($!);
-		open($RLUR{$b}, ">", "$lfix.lur") or die($!);
+		$LLUR{$b} = openout("$rfix.lur", $gz);
+		$RLUR{$b} = openout("$lfix.lur", $gz);
 	}
 }
 
-open($LWOB, ">", "$lfile.wob") or die($!);
-open($RWOB, ">", "$rfile.wob") or die($!);
+$LWOB = openout("$lfile.wob", $gz);
+$RWOB = openout("$rfile.wob", $gz);
+
+## END FILES ##
 
 my $mod;
 my $eof;
 
-$lline = <LIN>;
-$rline = <RIN>;
+$lline = <$lin>;
+$rline = <$rin>;
 
 die("Input files have wrong format") if (substr($lline, 0, 1) ne '@' or substr($rline, 0, 1) ne '@');
 $lh = substr($lline, 1);
@@ -398,14 +445,15 @@ my $abbc = 0;
 my $lurc = 0;
 my $rurc = 0;
 my $total = 0;
+
 my $time;
 while (!$eof) {
-	$lline = <LIN>;
-	$rline = <RIN>;
+	$lline = <$lin>;
+	$rline = <$rin>;
 	chomp $lline;
 	chomp $rline;
 	$mod = $. % 4;
-	$eof = (eof(LIN) or eof(RIN) or !$lline or !$rline);
+	$eof = (eof($lin) or eof($rin) or !$lline or !$rline);
 	## if it is header ##
 	if ($mod == 1 || $eof) {
 		if ($is_dup) {
@@ -435,12 +483,12 @@ while (!$eof) {
 				print { $RXBI{$b_chosen} } $r;
 				$xbic++;
 			}
-			elsif ($lrest && index($l, $lrest) > -1) {
+			elsif ($lrest && index($l, $lrest) == -1) {
 				print { $LLUR{$b_chosen} } $l;
 				print { $RLUR{$b_chosen} } $r;
 				$lurc++;
 			}
-			elsif ($rrest && index($r, $rrest) > -1) {
+			elsif ($rrest && index($r, $rrest) == -1) {
 				print { $LRUR{$b_chosen} } $l;
 				print { $RRUR{$b_chosen} } $r;
 				$rurc++;
@@ -507,8 +555,8 @@ while (!$eof) {
 	}
 }
 
-close(LIN);
-close(RIN);
+close($lin);
+close($rin);
 
 foreach my $k (0..$#barcodes) {
 	$b = $barcodes[$k];
@@ -603,8 +651,9 @@ foreach my $b (keys %uniq) {
 	printf STDERR "%s %d %d %d\n", $b, defined($aread_num{$b}) ? $aread_num{$b} : 0, defined($uread_num{$b}) ? $uread_num{$b} : 0, defined($loci_num{$b}) ? $loci_num{$b} : 0;
 }
 
-open(RINT, ">", "$rfile.int") or die($!);
+open(INT, ">", "$rfile.int") or die($!);
 while (my ($i, $count) = each (%dbrs)) {
-	printf RINT "%s %d\n", $i, $count;
+	printf INT "%s %d\n", $i, $count;
 }
-close(RINT);
+print STDERR "\nDone\n";
+close(INT);
