@@ -45,8 +45,8 @@ Use as:
        -t : tolerated barcode shift
       -lt : trim the left  sequences to this length
       -rt : trim the right sequences to this length
-   -lrest : check for the presence of this overhang for the left  restrictase
-   -rrest : check for the presence of this overhang for the right restrictase
+   -lrest : check for incomplete restriction for the left  restrictase
+   -rrest : check for incomplete restriction for the right restrictase
       -gz : gzip output files (y/n) [y]
    -nodup : don't search for duplicates (y/n) [n]
 ";
@@ -483,12 +483,12 @@ while (!$eof) {
 				print { $RXBI{$b_chosen} } $r;
 				$xbic++;
 			}
-			elsif ($lrest && index($l, $lrest) == -1) {
+			elsif ($lrest && index($l, $lrest) > -1) {
 				print { $LLUR{$b_chosen} } $l;
 				print { $RLUR{$b_chosen} } $r;
 				$lurc++;
 			}
-			elsif ($rrest && index($r, $rrest) == -1) {
+			elsif ($rrest && index($r, $rrest) > -1) {
 				print { $LRUR{$b_chosen} } $l;
 				print { $RRUR{$b_chosen} } $r;
 				$rurc++;

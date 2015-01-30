@@ -18,28 +18,35 @@ use warnings;
 my %args = @ARGV;
 if (!@ARGV or defined($args{-h}) or defined($args{-v})) {
 	print STDERR "Usage:
-perl genomecut.pl (-r1 <enzyme> | -r1 <enzyme1> -r2 <enzyme2>) -t <task> (-fa <fasta> | -fq <fastq>) (-l <length> | )
+perl genomecut.pl (-r1 <enzyme> | -r1 <enzyme1> -r2 <enzyme2>) -t <task> (-fa <fasta> | -fq <fastq>) \
+      (-min <length>) (-max <length>) (-l <length> | -cat <y/n>) (-no <y/n>)
 
 Arguments:
 	-r1 - the first (or the sole) enzyme/file for double digest
 	-r2 - the second              enzyme/file for double digest
+	-fa - input data in (optionally gzipped) fasta format ('-' for STDIN)
+	-fq - input data in (optionally gzipped) fastq format ('-' for STDIN)
 	-t  - task, one of
 		'dist'  - distribution of recognition sites          (single digest)
 		'frag'  - sequences        for restriction fragments (double digest)
 		'lens'  - sequence lengths for restriction fragments (double digest)
 		'ldist' - summary for 'lens'                         (double digest)
-	-l  - minimal input sequence length for digest
-	-fa - input data in (optionally gzipped) fasta format ('-' for STDIN)
-	-fq - input data in (optionally gzipped) fastq format ('-' for STDIN)
-        -no - remove N's before cutting the sequences (y/n)\n";
+	-min - minimal length of restriction fragments
+	-max - maximal length of restriction fragments
+	-cat - concatenate all input sequences before cutting
+	-l   - minimal input sequence length for digest
+        -no  - remove N's before cutting the sequences\n";
 	exit 0;
 }
 
 my ($r1, $r2);
 my ($atgc_total, $gc_total, $len_total, $len_total_sq, $seq_n);
 my (%frag_total, %frag_total_sq, %frag_n);
+my $min = 0;
+my $max = 0;
 my @seqlens;
 my $t = "dist";
+my $cat = 0;
 my $double = 0;
 my $l = 0;
 my $file;
@@ -77,10 +84,25 @@ if (defined($args{-l})) {
 	($l !~ m/^\d+$/) && die("Incorrect -l\n");
 	delete($args{-l});
 }
+if (defined($args{-min})) {
+	$min = $args{-min};
+	($min !~ m/^\d+$/) && die("Incorrect -min\n");
+	delete($args{-min});
+}
+if (defined($args{-max})) {
+	$max = $args{-max};
+	($max !~ m/^\d+$/ || $max < $min) && die("Incorrect -max\n");
+	delete($args{-max});
+}
 if (defined($args{-no})) {
 	($args{-no} ne "y" && $args{-no} ne "n") && die("Incorrect -no\n");
 	$no = ($args{-no} eq "y");
 	delete($args{-no});
+}
+if (defined($args{-cat})) {
+	($args{-cat} ne "y" && $args{-cat} ne "n") && die("Incorrect -cat\n");
+	$cat = ($args{-cat} eq "y");
+	delete($args{-cat});
 }
 if (defined($args{-fa})) {
 	$file = $args{-fa};
@@ -165,11 +187,14 @@ sub do_lens {
 	my $seq_len = length($seq);
 	($seq_len <= $l) && return;
 	my ($len, $gc) = gc($seq);
+	my $frag_len;
 	add_seqlen($len, $gc, $seq_len);
 	foreach my $p1 (@pat1) {
 		foreach my $p2 (@pat2) {
 			while ($seq =~ /($p1(?:(?:(?!$p2|$p1).)+)$p2|$p2(?:(?:(?!$p1|$p2).)+)$p1)/g) {
-				printf "%s\t%s\t%s\n", $enz{$p1}, $enz{$p2}, length($1);
+				$frag_len = length($1);
+				($frag_len < $min || $max && $frag_len > $max) && next;
+				printf "%s\t%s\t%s\n", $enz{$p1}, $enz{$p2}, $frag_len;
 			}
 		}
 	}
@@ -186,6 +211,7 @@ sub do_ldist {
 		foreach my $p2 (@pat2) {
 			while ($seq =~ /($p1(?:(?:(?!$p2|$p1).)+)$p2|$p2(?:(?:(?!$p1|$p2).)+)$p1)/g) {
 				$frag_len = length($1);
+				($frag_len < $min || $max && $frag_len > $max) && next;
 				$frag_total{$p1}{$p2}    += $frag_len;
 				$frag_total_sq{$p1}{$p2} += $frag_len * $frag_len;
 				$frag_n{$p1}{$p2}++;
@@ -280,6 +306,7 @@ if ($t eq "lens") {
 while ($line = <$fh>) {
 	($fq && ($.-1)%4 > 1) && next;
 	if ($fq && $.%4 == 1 || $line =~ /^>/) {
+		$cat && next;
 		$tsubs{$t}->($seq);
 		$seq = "";
 		chomp $line;
@@ -303,22 +330,23 @@ printf STDERR "Mean length (SD) - %.1f (%.2f)\n", $len_total / $seq_n, stdev($se
 printf STDERR "GC%% - %.3f\n", $gcf;
 
 if ($t eq "ldist") {
-	printf "%s\t%s\t% 8s\t% 8s\t% 8s\n", "R1", "R2", "Mean len", "SD", "N";
+	printf "%-10s\t%-10s\t%-8s\t%-8s\t%-8s\t%-8s\t%-8s\n", "R1", "R2", "Mean len", "SD", "N", "N/bp", "N/Mb";
 	foreach my $p1 (@pat1) {
 		foreach my $p2 (@pat2) {
-			printf "%s\t%s\t", $enz{$p1}, $enz{$p2};
+			printf "%-10s\t%-10s\t", $enz{$p1}, $enz{$p2};
 			if (!defined($frag_n{$p1}{$p2})) {
 				print "0\t0\n0\n";
 				next;
 			}
 			my $n = $frag_n{$p1}{$p2};
 			my $s = $frag_total{$p1}{$p2};
-			printf "% 8.2f\t% 8.2f\t% 8d\n", $s / $n, stdev($n, $s, $frag_total_sq{$p1}{$p2}), $n;
+			my $f = $n / $len_total;
+			printf "%-8.2f\t%-8.2f\t%-8d\t%f\t%-8.1f\n", $s / $n, stdev($n, $s, $frag_total_sq{$p1}{$p2}), $n, $f, $f * 1000000;
 		}
 	}
 }
 elsif ($t eq "dist") {
-	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Enzyme", "Obs occ", "Obs freq", "Obs fr/Mb", "Exp occ", "Exp freq", "Exp fr/Mb";
+	printf "%-10s\t%s\t%s\t%s\t%s\t%s\t%s\n", "Enzyme", "Obs occ", "Obs occ/bp", "Obs occ/Mb", "Exp occ", "Exp occ/bp", "Exp occ/Mb";
 	while (my ($p, $e) = each %enz) {
 		my %f = (A => 0, C => 0, G => 0, T => 0,
 			 M => 0, R => 0, W => 0, S => 0, Y => 0, K => 0, V => 0, H => 0, D => 0, B => 0);
@@ -333,7 +361,7 @@ elsif ($t eq "dist") {
 		my $exp_raw = $exp * $len_total;
 		my $obs_raw   = defined($counts{$p}) ? $counts{$p} : 0;
 		my $obs       = $obs_raw / $len_total;
-		printf "%s\t% 7d\t%f\t% 9.1f\t% 7.f\t%f\t% 9.1f\n", $enz{$p}, $obs_raw, $obs, $obs * 1000000, $exp_raw, $exp, $exp * 1000000;
+		printf "%-10s\t%-7d\t%-10f\t%-10.1f\t%-7.f\t%-10f\t%-10.1f\n", $enz{$p}, $obs_raw, $obs, $obs * 1000000, $exp_raw, $exp, $exp * 1000000;
 	}
 }
 
