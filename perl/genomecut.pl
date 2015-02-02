@@ -15,11 +15,18 @@
 use strict;
 use warnings;
 
-my %args = @ARGV;
-if (!@ARGV or defined($args{-h}) or defined($args{-v})) {
+sub in_array {
+	my ($search_for, $arr) = @_;
+	foreach my $value (@$arr) {
+		return 1 if $value eq $search_for;
+	}
+	return 0;
+}
+
+if (!@ARGV or in_array("-h", \@ARGV) or in_array("-help", \@ARGV)) {
 	print STDERR "Usage:
 perl genomecut.pl (-r1 <enzyme> | -r1 <enzyme1> -r2 <enzyme2>) -t <task> (-fa <fasta> | -fq <fastq>) \
-      (-min <length>) (-max <length>) (-l <length> | -cat <y/n>) (-no <y/n>)
+      (-min <length>) (-max <length>) (-l <length> | -cat <y/n>) (-no <y/n>) (-h)
 
 Arguments:
 	-r1 - the first (or the sole) enzyme/file for double digest
@@ -35,9 +42,14 @@ Arguments:
 	-max - maximal length of restriction fragments
 	-cat - concatenate all input sequences before cutting
 	-l   - minimal input sequence length for digest
-        -no  - remove N's before cutting the sequences\n";
+        -no  - remove N's before cutting the sequences
+	-h   - show this manual\n";
 	exit 0;
 }
+
+die "Wrong number of arguments\n" if !($#ARGV % 2);
+
+my %args = @ARGV;
 
 my ($r1, $r2);
 my ($atgc_total, $gc_total, $len_total, $len_total_sq, $seq_n);
@@ -333,15 +345,20 @@ if ($t eq "ldist") {
 	printf "%-10s\t%-10s\t%-8s\t%-8s\t%-8s\t%-8s\t%-8s\n", "R1", "R2", "Mean len", "SD", "N", "N/bp", "N/Mb";
 	foreach my $p1 (@pat1) {
 		foreach my $p2 (@pat2) {
-			printf "%-10s\t%-10s\t", $enz{$p1}, $enz{$p2};
-			if (!defined($frag_n{$p1}{$p2})) {
-				print "0\t0\n0\n";
-				next;
-			}
-			my $n = $frag_n{$p1}{$p2};
-			my $s = $frag_total{$p1}{$p2};
-			my $f = $n / $len_total;
-			printf "%-8.2f\t%-8.2f\t%-8d\t%f\t%-8.1f\n", $s / $n, stdev($n, $s, $frag_total_sq{$p1}{$p2}), $n, $f, $f * 1000000;
+                        printf "%-10s\t%-10s\t", $enz{$p1}, $enz{$p2};
+                        my $n = 0;
+                        my $s = 0;
+                        my $f = 0;
+                        my $sd = 0;
+                        my $avlen = 0;
+                        if (defined($frag_n{$p1}{$p2})) {
+                                $n = $frag_n{$p1}{$p2};
+                                $s = $frag_total{$p1}{$p2};
+                                $f = $n / $len_total;
+                                $sd = stdev($n, $s, $frag_total_sq{$p1}{$p2});
+                                $avlen = $s / $n;
+                        }
+                        printf "%-8.2f\t%-8.2f\t%-8d\t%f\t%-8.1f\n", $avlen, $sd, $n, $f, $f * 1000000;
 		}
 	}
 }
@@ -365,6 +382,3 @@ elsif ($t eq "dist") {
 	}
 }
 
-# 'd <- read.table(file("stdin"),TRUE)',
-# 'with(d, Hist(Length, scale="frequency", breaks=200, col="darkgray"))'
-# "svg(\"$name.svg\",width=3,height=3)",
