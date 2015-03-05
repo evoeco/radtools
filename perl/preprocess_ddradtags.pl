@@ -76,14 +76,14 @@ if (defined($args{-b})) {
 	delete($args{-b});
 }
 else {
-	die("barcode file not specified");
+	die("barcode file not specified\n");
 }
 if (defined($args{-i})) {
 	$orig_dbr = $args{-i};
 	delete($args{-i});
 }
 else {
-	die("DBR not specified");
+	die("DBR not specified\n");
 }
 if (defined($args{-l}) and defined($args{-r})) {
 	$lfile = $args{-l};
@@ -92,7 +92,7 @@ if (defined($args{-l}) and defined($args{-r})) {
 	delete($args{-r});
 }
 else {
-	die("two fastq-files are expected");
+	die("two fastq-files are expected\n");
 }
 if (defined($args{-m})) {
 	$m = $args{-m};
@@ -144,22 +144,22 @@ if (defined($args{-s})) {
 
 if (defined($args{-lrest})) {
 	$lrest = $args{-lrest};
-	die("Invalid restriction site '$lrest'") if ($lrest !~ /^[ATGC]+$/);
+	die("Invalid restriction site '$lrest'\n") if ($lrest !~ /^[ATGC]+$/);
 	delete($args{-lrest});
 }
 if (defined($args{-rrest})) {
 	$rrest = $args{-rrest};
-	die("Invalid restriction site '$rrest'") if ($lrest !~ /^[ATGC]+$/);
+	die("Invalid restriction site '$rrest'\n") if ($rrest !~ /^[ATGC]+$/);
 	delete($args{-rrest});
 }
 if (defined($args{-gz})) {
 	$gz = $args{-gz};
-	die("Invalid choice '$gz' for -gz") if $gz ne 'y' && $gz ne 'n';
+	die("Invalid choice '$gz' for -gz\n") if $gz ne 'y' && $gz ne 'n';
 	delete($args{-gz});
 }
 if (defined($args{-nodup})) {
 	$nodup = $args{-gz};
-	die("Invalid choice '$nodup' for -nodup") if $nodup ne 'y' && $nodup ne 'n';
+	die("Invalid choice '$nodup' for -nodup\n") if $nodup ne 'y' && $nodup ne 'n';
 	delete($args{-nodup});
 }
 foreach my $key (keys %args) {
@@ -194,7 +194,7 @@ my @i_rescue;
 
 ## read the barcodes from the files ##
 sub read_barcodes {
-	open(BARCODES, "<", $bfile) or die("Couldn't open barcode file");
+	open(BARCODES, "<", $bfile) or die("Couldn't open barcode file\n");
 	my (@all_barcodes, $len, @parts);
 	my (%no_dbrs_hash, %i_shifts_hash);
 	while (my $line = <BARCODES>) {
@@ -426,7 +426,7 @@ my $eof;
 $lline = <$lin>;
 $rline = <$rin>;
 
-die("Input files have wrong format") if (substr($lline, 0, 1) ne '@' or substr($rline, 0, 1) ne '@');
+die("Input files have wrong format\n") if (substr($lline, 0, 1) ne '@' or substr($rline, 0, 1) ne '@');
 $lh = substr($lline, 1);
 $rh = substr($rline, 1);
 chomp $lh;
@@ -510,7 +510,7 @@ while (!$eof) {
 	}
 	## if it is the "+"-line ##
 	elsif ($mod == 3) {
-		die("Files are not in phase: $lline") if ($lline ne "+" or $rline ne "+");
+		die("Files are not in phase: $lline\n") if ($lline ne "+" or $rline ne "+");
 		if ($total % 1000000 == 0) {
 			$time = time() - $start_time;
 			printf STDERR "Read pair #%d, %d sec, %d reads/sec\n", $total, $time, $total / $time if $time > 0;
