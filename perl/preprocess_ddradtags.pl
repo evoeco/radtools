@@ -48,7 +48,7 @@ Use as:
    -lrest : check for incomplete restriction for the left  restrictase
    -rrest : check for incomplete restriction for the right restrictase
       -gz : gzip output files (y/n) [y]
-   -nodup : don't search for duplicates (y/n) [n]
+   -nodup : don't search for duplicates (y/n) [n] (not implemented yet)
 ";
 	exit();
 }
@@ -63,11 +63,14 @@ my $lt = 90;
 my $rt = 90;
 my $gz = 'y';
 
+my $nodup = 'n';
+
 my %skipped;
 my %dbrs;
 
 my $lrest = 0;
 my $rrest = 0;
+
 
 ## START ARGS ##
 
@@ -313,7 +316,7 @@ sub find_dbr {
 
 ## detect if this is a duplicate ##
 sub is_duplicate {
-	return 1 if $nodup eq 'n';
+#	return 1 if $nodup eq 'n';
 	$seq = shift;
 	$subseq1 = substr($seq, 0,  $m);
 	$subseq2 = substr($seq, $m, $m);
