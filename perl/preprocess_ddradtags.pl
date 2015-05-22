@@ -20,7 +20,7 @@ use warnings;
 
 my %args = @ARGV;
 
-my $verion = "1.2";
+my $verion = "1.3";
 
 if (!@ARGV or defined($args{-h}) or defined($args{-v})) {
 	print STDERR "preprocess_ddradtags.pl version $verion
@@ -38,32 +38,27 @@ Use as:
               The standard [IUPAC codes](http://www.bioinformatics.org/sms/iupac.html) are expected to denote variable positions
 
   Optional arguments:
-       -m : matching length
-       -x : allowed mismatches in DBR
-       -y : allowed mismatches in barcode
-       -s : P7 shift
-       -t : tolerated barcode shift
-      -lt : trim the left  sequences to this length
-      -rt : trim the right sequences to this length
-   -lrest : check for incomplete restriction for the left  restrictase
-   -rrest : check for incomplete restriction for the right restrictase
+       -m : matching length [10]
+       -x : allowed mismatches in DBR [1]
+       -y : allowed mismatches in barcode [1]
+       -t : tolerated barcode shift [1]
+      -lt : trim the left  sequences to this length [90]
+      -rt : trim the right sequences to this length [90]
+   -lrest : if provided - check for incomplete restriction for the left  restrictase []
+   -rrest : if provided - check for incomplete restriction for the right restrictase []
       -gz : gzip output files (y/n) [y]
-   -nodup : don't search for duplicates (y/n) [n] (not implemented yet)
 ";
 	exit();
 }
 
 my ($bfile, $lfile, $rfile, $orig_dbr, $dbr, $icut);
 my $m = 10;
-my $s = 0;
 my $x = 1;
 my $y = 1;
 my $t = 1;
 my $lt = 90;
 my $rt = 90;
 my $gz = 'y';
-
-my $nodup = 'n';
 
 my %skipped;
 my %dbrs;
@@ -116,7 +111,7 @@ if (defined($args{-y})) {
 	delete($args{-y});
 }
 else {
-	print STDERR "Number of mismatches in barcodes not specified: taking the default of $y\n";
+	print STDERR "Number of mismatches in barcodes not specified: taking the defaulft of $y\n";
 }
 if (defined($args{-t})) {
 	$t = $args{-t};
@@ -140,11 +135,6 @@ else {
 	print STDERR "Right trim size not specified: taking the default of $rt\n";
 }
 
-if (defined($args{-s})) {
-	$s = $args{-s};
-	delete($args{-s});
-}
-
 if (defined($args{-lrest})) {
 	$lrest = $args{-lrest};
 	die("Invalid restriction site '$lrest'\n") if ($lrest !~ /^[ATGC]+$/);
@@ -160,17 +150,12 @@ if (defined($args{-gz})) {
 	die("Invalid choice '$gz' for -gz\n") if $gz ne 'y' && $gz ne 'n';
 	delete($args{-gz});
 }
-if (defined($args{-nodup})) {
-	$nodup = $args{-gz};
-	die("Invalid choice '$nodup' for -nodup\n") if $nodup ne 'y' && $nodup ne 'n';
-	delete($args{-nodup});
-}
 foreach my $key (keys %args) {
 	print STDERR "$key: unknown parameter\n";
 	exit();
 }
 
-print STDERR "The script was launched as: -l $lfile -r $rfile -b $bfile -i $orig_dbr -m $m -x $x -y $y -s $s -t $t -lt $lt -rt $rt -lrest $lrest -lrest $rrest -gz $gz -nodup $nodup\n";
+print STDERR "The script was launched as: -l $lfile -r $rfile -b $bfile -i $orig_dbr -m $m -x $x -y $y -t $t -lt $lt -rt $rt -lrest $lrest -lrest $rrest -gz $gz\n";
 
 my $m2 = $m * 2;
 
@@ -206,7 +191,7 @@ sub read_barcodes {
  			$bl = $line;
 			next;
 		}
-		die("The barcode file has incorrect format. Three fields expected: the barcode, the presence-of-DBR-flag, P7 offset\n") if ($line !~ /^[ATGCX]+\s+(1|0)\s+\d(\s+\w+)?$/);
+		die("The barcode file has incorrect format. At least three fields expected: the barcode, the presence-of-DBR-flag, P7 offset\n") if ($line !~ /^[ATGCX]+\s+(1|0)\s+\d(\s+\w+)?$/);
 		@parts = split ' ', $line;
 		$b = $parts[0];
 		push(@all_barcodes, $b);
@@ -250,7 +235,7 @@ sub prepare_dbr {
 	$pattern =~ s/D/[AGT]/g;
 	$pattern =~ s/H/[ACT]/g;
 	$pattern =~ s/V/[ACG]/g;
-	$pattern =~ s/N/[ACGTX]/g;
+	$pattern =~ s/N/[ACGTNX]/g;
 	return $pattern;
 }
 
@@ -262,7 +247,8 @@ sub read_dbr {
 	$var_dbr =~ s/[ATGC]+$//g;
 	$icut = length($var_dbr) - length($orig_dbr);
 	my @i_bases = split //, $orig_dbr;
-	while (my ($pos, $i_base) = each @i_bases) {
+	for my $pos (0..$#i_bases) {
+		my $i_base = $i_bases[$pos];
 		next if $i_base eq 'N';
 		$i_base =~ tr/ACGTRYMKBDHVYRKM/BDHVYRKMACGTRYMK/;
 		push(@i_rescue, prepare_dbr(substr($orig_dbr, 0, $pos).$i_base.substr($orig_dbr, $pos + 1)) );
@@ -297,7 +283,7 @@ sub find_dbr {
 	my $seq = shift;
 	$subseq = substr($seq, $i_shift, $il);
 	foreach my $j (0..$t) {
-		my $subseqj = $t ? substr($seq, $i_shift + $j, $il) : $subseq;
+		my $subseqj = $j ? substr($seq, $i_shift + $j, $il) : $subseq;
 		if ($subseqj =~ /^($dbr)/) {
 			$i_chosen = $icut < 0 ? substr($1, 0, $icut) : $1;
 			$dbrs{$i_chosen}++;
@@ -316,7 +302,6 @@ sub find_dbr {
 
 ## detect if this is a duplicate ##
 sub is_duplicate {
-#	return 1 if $nodup eq 'n';
 	$seq = shift;
 	$subseq1 = substr($seq, 0,  $m);
 	$subseq2 = substr($seq, $m, $m);
@@ -385,7 +370,7 @@ read_dbr();
 my $lin = openin($lfile);
 my $rin = openin($rfile);
 
-my (%LABB, %RABB, %LWBI, %RWBI, %LXBI, %RXBI, %LNOI, %RNOI, $LWOB, $RWOB, %LWOI, %RWOI, %LRUR, %RRUR, %LLUR, %RLUR);
+my (%LABB, %RABB, %LWBI, %RWBI, %LNOI, %RNOI, $LWOB, $RWOB, %LWOI, %RWOI, %LRUR, %RRUR, %LLUR, %RLUR);
 
 foreach my $k (0..$#barcodes) {
 	$b = $barcodes[$k];
@@ -403,10 +388,6 @@ foreach my $k (0..$#barcodes) {
 		$RWBI{$b} = openout("$rfix.wbi", $gz);
 		$LWOI{$b} = openout("$lfix.woi", $gz);
 		$RWOI{$b} = openout("$rfix.woi", $gz);
-		if ($s) {
-			$LXBI{$b} = openout("$lfix.xbi", $gz);
-			$RXBI{$b} = openout("$rfix.xbi", $gz);
-		}
 	}
 	if ($rrest) {
 		$LRUR{$b} = openout("$rfix.rur", $gz);
@@ -439,7 +420,6 @@ my $is_dup = 0;
 ## fastq parsing: get the lines simultaneously for the left- and the right-read files ##
 
 my $wbic = 0;
-my $xbic = 0;
 my $wobc = 0;
 my $woic = 0;
 my $noic = 0;
@@ -457,8 +437,22 @@ while (!$eof) {
 	chomp $rline;
 	$mod = $. % 4;
 	$eof = (eof($lin) or eof($rin) or !$lline or !$rline);
-	## if it is header ##
-	if ($mod == 1 || $eof) {
+	## if it is the quality line ##
+	if ($mod == 0) {
+		$lq = $lline;
+		$rq = $rline;
+		if ($bl_chosen >= 0) {
+			$lq = substr($lq, $bl_chosen, $lt);
+			if ($no_dbr) {
+				$rq = substr($rq, $i_shift, $rt);
+			}
+			elsif ($i_offset >= 0) {
+				$rq = substr($rq, $i_offset, $rt);
+			}
+		}
+	}
+	## if it is header or end of file ##
+	elsif ($mod == 1 || $eof) {
 		if ($is_dup) {
 			$skipped{$b_chosen}++;
 			$dupc++;
@@ -480,11 +474,6 @@ while (!$eof) {
 				print { $LWOI{$b_chosen} } $l;
 				print { $RWOI{$b_chosen} } $r;
 				$woic++;
-			}
-			elsif ($s and $i_shift == 0) {
-				print { $LXBI{$b_chosen} } $l;
-				print { $RXBI{$b_chosen} } $r;
-				$xbic++;
 			}
 			elsif ($lrest && index($l, $lrest) > -1) {
 				print { $LLUR{$b_chosen} } $l;
@@ -520,23 +509,10 @@ while (!$eof) {
 		}
 		$total++;
 	}
-	## if it is the quality line ##
-	elsif ($mod == 0) {
-		$lq = $lline;
-		$rq = ("B" x $s).$rline;
-		next if $bl_chosen < 0;
-		$lq = substr($lq, $bl_chosen, $lt);
-		if ($no_dbr) {
-			$rq = substr($rq, $i_shift, $rt);
-			next;
-		}
-		next if $i_offset < 0;
-		$rq = substr($rq, $i_offset, $rt);
-	}
 	## if it is the sequence line ##
 	elsif ($mod == 2) {
 		$ls = $lline;
-		$rs = ("X" x $s).$rline;
+		$rs = $rline;
 		$is_dup = 0;
 		$bl_chosen = find_similar_barcode($ls);
 		next if $bl_chosen < 0;
@@ -569,10 +545,6 @@ foreach my $k (0..$#barcodes) {
 	if (exists($LWBI{$b})) {
 		close($LWBI{$b});
 		close($RWBI{$b});
-	}
-	if (exists($LXBI{$b})) {
-		close($LXBI{$b});
-		close($RXBI{$b});
 	}
 	if (exists($LNOI{$b})) {
 		close($LNOI{$b});
@@ -607,7 +579,7 @@ else {
 
 ## print out the summaries ##
 
-printf STDERR "Total number of input reads: %d.\nAmong them: %d abb, %d wbi, %d wbi0, %d noi, %d woi, %d wob, %d dup, %d lur, %d rur\n\n", $total, $abbc, $wbic, $xbic, $noic, $woic, $wobc, $dupc, $lurc, $rurc;
+printf STDERR "Total number of input reads: %d.\nAmong them: %d abb, %d wbi, %d noi, %d woi, %d wob, %d dup, %d lur, %d rur\n\n", $total, $abbc, $wbic, $noic, $woic, $wobc, $dupc, $lurc, $rurc;
 
 print STDERR "The counts of skipped reads are:\n";
 
@@ -630,7 +602,8 @@ my %loci_num;
 my $sum = 0;
 
 while (my ($b, $locdbrs) = each (%uniq)) {
-	while (my ($locus, $udbrs) = each (@{$locdbrs})) {
+	foreach my $locus (0..$#{$locdbrs}) {
+		my $udbrs = ${$locdbrs}[$locus];
 		$sum = 0;
 		while (my ($i, $count) = each (%{$udbrs})) {
 			$sum += $count;
