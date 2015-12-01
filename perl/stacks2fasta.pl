@@ -114,7 +114,7 @@ if (!@ARGV) {
     -form      - output format:                                                             [Default: fa]
        Arlequin (arp), Fasta (fa/fas), Mega (meg), Nexus (nex), DIYABC GenePop (pop), DIYABC SNP (snp), PED (ped), Stacks TSV (tsv)
     -major     - filter out minor alleles with this frequency threshold (absolute number)   [Default: 0 (no filtering)]
-    -nodoubles - filter out minor SNPs with the same pattern from the same locus            [Default: 0 (no filtering)]
+    -nodoubles - filter out SNPs with the same pattern in the same locus                    [Default: 0 (no filtering)]
     -samplesnp - pick up single SNP per each locus:                                         [Default: 0]
        first SNP (first)
     -ploidy    - expected ploidy level                                                      [Default: 2]
