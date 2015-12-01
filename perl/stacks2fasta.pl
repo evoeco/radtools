@@ -18,11 +18,11 @@
 use strict;
 use warnings;
 
-my $ver = "2.2";
-print STDERR "This is stacks2fasta script ver. $ver\n";
+my $ver = "2.5";
+printf STDERR "This is stacks2fasta script ver. %d\n", $ver;
 print STDERR "Written by Andrey Rozenberg, Ruhr-Universitaet Bochum and distributed under GNU GPL v. 3\n";
 print STDERR "Cite as:
-Macher J et al (2014). Assessing the phylogeographic history of the montane caddisfly Thremma gallicum using mitochondrial and restriction-site associated DNA (RAD) markers. Ecology and Evolution, accepted\n";
+Macher J et al (2015). Assessing the phylogeographic history of the montane caddisfly Thremma gallicum using mitochondrial and restriction-site-associated DNA (RAD) markers. Ecology and Evolution 5(3): 648–662, doi:10.1002/ece3.1366\n";
 my @cols;
 my %outgs;
 my %excls;
@@ -58,6 +58,8 @@ my @homoz;
 my %actual_alleles;
 my $allmin = 0;
 my $allmax = 0;
+my $snpmin = 0;
+my $snpmax = 0;
 my $add_dummy = 0;
 my $minor_thr;
 my $arp_minor_thr = 0;
@@ -68,7 +70,7 @@ my @current_heteroz;
 my @current_homoz;
 my $explode = 0;
 my $phased = 0;
-my %formats = ( arp => 1, fa  => 1, meg => 1, nex => 1, pop => 1, snp => 1, ped => 1);
+my %formats = ( arp => 1, fa  => 1, meg => 1, nex => 1, pop => 1, snp => 1, ped => 1, tsv => 1);
 my @all_alleles;
 my %popul;
 my $multiallele = 0;
@@ -78,6 +80,10 @@ my $polymorphic = 0;
 my $first_specimen;
 my $encode_snp = 0;
 my $total_len = 0;
+my $row;
+my $header;
+my $popul_file = 0;
+my $firstsnp  = 0;
 
 my %ambig_map = (
 	'AT' => 'W', 'TA' => 'W',
@@ -95,20 +101,22 @@ if (!@ARGV) {
    INPUT:
      tsv file produced by export_sql.pl ('-' for STDIN)
    OPTIONS:
-     -lim      - minimal number of taxa required for a locus to be reported                 [Default: 0 (without limit)]
+     -lim      - minimal number of samples required for a locus to be reported              [Default: 0 (without limit)]
     -alls      - min,max interval for the number of alleles per locus                       [Default: without limit]
+    -snps      - min,max interval for the number of SNPs per locus                          [Default: without limit]
     -outg      - take only those loci, which are genotyped in these individuals             [comma-separated list of names, default: no preferences]
     -excl      - discard these individuals                                                  [comma-separated list of names, default: include everything]
-    -popul     - population assignments                                                     [comma-separated list name1/pop1,name2/pop2,...]
-    -fill      - substitute data-missing-positions with this symbol ('\\?' for '?')          [Default: 0 (the whole locus filled with '-')]
+    -popul     - population assignments                                                     [file with pairs 'sample population']
+    -fill      - substitute data-missing-positions with this symbol ('\"?\"' for '?')        [Default: 0 (the whole locus filled with '-')]
     -data      - data to output:                                                            [Default: snps]
        variable positions only (snps), whole loci (whole) or whole loci including fixed positions (whole-all)
     -explode   - output each nucleotide position as separate locus (for -data snps only)    [Default: 0]
     -form      - output format:                                                             [Default: fa]
-       Arlequin (arp), Fasta (fa/fas), Mega (meg), Nexus (nex), GenePop (pop), GenePop-SNP (snp), PED (ped)
+       Arlequin (arp), Fasta (fa/fas), Mega (meg), Nexus (nex), DIYABC GenePop (pop), DIYABC SNP (snp), PED (ped), Stacks TSV (tsv)
     -major     - filter out minor alleles with this frequency threshold (absolute number)   [Default: 0 (no filtering)]
     -nodoubles - filter out minor SNPs with the same pattern from the same locus            [Default: 0 (no filtering)]
-    -dumm      - add 20% of dummy positions in for GenePop-SNP format (DIYABC bug)          [Default: 0 (no dummy positions)]
+    -samplesnp - pick up single SNP per each locus:                                         [Default: 0]
+       first SNP (first)
     -ploidy    - expected ploidy level                                                      [Default: 2]
 ";
 	exit;
@@ -141,7 +149,7 @@ if ($#ARGV > 0) {
 		delete($args{-form});
 	}
 	if (defined($args{-data})) {
-		die "-data is expected to be 'snps', 'whole' or 'whole-all'\n" if $args{-data} ne 'snps' && $args{-data} ne 'whole' && $args{-data} ne 'whole-all';
+		die "-data: unexpected data type\n" if $args{-data} ne 'snps' && $args{-data} ne 'whole' && $args{-data} ne 'whole-all';
 		$snps_only = $args{-data} eq 'snps';
 		$include_fixed = $args{-data} eq 'whole-all';
 		delete($args{-data});
@@ -156,7 +164,7 @@ if ($#ARGV > 0) {
 	}
 	if (defined($args{-excl})) {
 		%excls = map { $_ => 1 } split(/,/, $args{-excl});
-		if (%outgs) {
+		if (keys %outgs) {
 			foreach my $excl (%excls) {
 				die "-excl and -outg intersect\n" if defined($outgs{$excl});
 			}
@@ -165,17 +173,21 @@ if ($#ARGV > 0) {
 	}
 	if (defined($args{-alls})) {
 		my @alls = split(/,/, $args{-alls});
-		die "-alls is expected to be an interval 'min,max' with min < max\n" if $#alls != 1 || $alls[0] !~ /^\d+$/ || $alls[1] !~ /^\d+$/ || $alls[0] >= $alls[1];
+		die "-alls is expected to be an interval 'min,max' with min < max\n" if $#alls != 1 || $alls[0] !~ /^\d+$/ || $alls[1] !~ /^\d+$/ || $alls[0] > $alls[1];
 		$allmin = $alls[0];
 		$allmax = $alls[1];
 		delete($args{-alls});
 	}
+	if (defined($args{-snps})) {
+		my @snps = split(/,/, $args{-snps});
+		die "-snps is expected to be an interval 'min,max' with min < max\n" if $#snps != 1 || $snps[0] !~ /^\d+$/ || $snps[1] !~ /^\d+$/ || $snps[0] > $snps[1];
+		$snpmin = $snps[0];
+		$snpmax = $snps[1];
+		delete($args{-snps});
+	}
 	if (defined($args{-popul})) {
-		foreach my $pair (split(/,/, $args{-popul})) {
-			my @parts = split(/\//, $pair);
-			die "-popul is expected to be a comma-separated list name1/pop1,name2/pop2,...\n" if $#parts != 1;
-			$popul{$parts[0]} = $parts[1];
-		}
+		die "File with population assignments not found\n" if ! -f $args{-popul};
+		$popul_file = $args{-popul};
 		delete($args{-popul});
 	}
 	if (defined($args{-major})) {
@@ -190,6 +202,12 @@ if ($#ARGV > 0) {
 		$explode = $args{-explode};
 		delete($args{-explode});
 	}
+	if (defined($args{-samplesnp})) {
+		die "-samplesnp random is not yet implemented\n" if $args{-samplesnp} eq "random";
+		die "Unexpected value for -samplesnp\n" if $args{-samplesnp} ne "first";
+		$firstsnp = 1;
+		delete($args{-samplesnp});
+	}
 	foreach my $key (keys %args) {
 		die "$key: unknown parameter\n";
 	}
@@ -200,6 +218,9 @@ my %callargs = (
 	pop => \&args_pop,
 	ped => \&args_ped,
 );
+my %callheader = (
+	tsv => \&header_tsv,
+);
 my %callprocess = (
 	fa  => \&process_fa,
 	arp => \&process_arp,
@@ -208,6 +229,7 @@ my %callprocess = (
 	meg => \&process_meg,
 	nex => \&process_nex,
 	ped => \&process_ped,
+	tsv => \&process_tsv,
 );
 my %callbottom = (
 	fa  => \&bottom_fa,
@@ -223,15 +245,134 @@ $callargs{$format}->() if defined($callargs{$format});
 
 die "'-explode 1' is compatible only with '-data snps'\n" if $explode && ($include_fixed || !$snps_only);
 
+if ($firstsnp) {
+	die "-samplesnp first is incompatible with '-explode 0'\n" if !$explode;
+	$nodoubles = 0;
+}
+
 if ($nodoubles) {
 	die "-nodoubles is incompatible with '-explode 0'\n" if !$explode;
 	$include_fixed = 0;
-	$major = 1;
 }
 
 ## END parse arguments
 
+print STDERR "stacks2fasta started\n";
+my $j = 0;
+
+my $fh;
+if ($ARGV[0] eq '-') {
+	open $fh, '-' or die "Couldn't read from STDIN";
+}
+else {
+	open $fh, '<', $ARGV[0] or die "Couldn't open $ARGV[0]";
+}
+
+$header = <$fh>;
+die("The input seems to have incorrect format\n") if !parse_header($header);
+
+%popul = parse_popul($popul_file) if $popul_file;
+
+$callheader{$format}->($.) if defined($callheader{$format});
+
+## reading the input data
+ROW: while ($row = <$fh>) {
+	chomp $row;
+	@cols = split(/\t/, $row);
+	next if $#cols < 12;
+	next if !$include_fixed && $cols[8] eq ""; 
+	$consensus = $cols[4];
+	parse_snps($cols[8]);
+	next if $snpmax > 0 && ($#snps <= $snpmin || $#snps + 1 > $snpmax);
+	@genotypes = @cols[12..($#specimens + 12)];
+
+	my $g_count = -1;
+	$lim_stack = 0;
+	@current_heteroz = ();
+	@current_homoz = ();
+	## iterate over genotypes
+	foreach my $genotype (@genotypes) {
+		$g_count++;
+		next if defined($exclude_tax[$g_count]);
+		## if no genotype is specified
+		if (!defined($genotype) || $genotype eq '') {
+			next ROW if $include_tax[$g_count];
+			no_data($g_count);
+		}
+		else {
+			$lim_stack++;
+			## if the genotype is like in consensus
+			if ($genotype eq 'consensus') {
+				like_in_consensus($g_count);
+			}
+			## if the genotype is specified explicitely
+			else {
+				next ROW if !parse_alleles($genotype, $g_count);
+			}
+			$actual_alleles{$chr1[$g_count]}++;
+			$actual_alleles{$chr2[$g_count]}++ if $phased;
+		}
+	}
+	@all_alleles = keys %actual_alleles;
+	## skip the locus if it doesn't satisfy our criteria
+	next if !$include_fixed && !$#all_alleles;
+	next if $allmax > 0 && ($#all_alleles <= $allmin || $#all_alleles + 1 > $allmax);
+	next if $lim_stack < $limit;
+
+	## filter the output and call the processing sub
+	next if !filter_output();
+
+	$polymorphic += ($#all_alleles > 0);
+	$locus = $.;
+	$callprocess{$format}->($.) if defined($callprocess{$format});
+
+	## increment zygosities
+	foreach my $i (@chosen_specimens) {
+		$homoz[$i]   += defined($current_homoz[$i])   ? $current_homoz[$i]   : 0;
+		$heteroz[$i] += defined($current_heteroz[$i]) ? $current_heteroz[$i] : 0;
+	}
+	$count++;
+} continue {
+	$totalcount++;
+	@chr1 = ();
+	@chr2 = ();
+	%actual_alleles = ();
+}
+
+## calculate total length of the alignment
+if (@output) {
+	for my $loc (0..$count-1) {
+		my @locus_seq = grep defined, @{$output[$loc][$first_specimen]};
+		$total_len += length(join("", @locus_seq));
+	}
+}
+
+## call the bottom callback
+$callbottom{$format}->() if defined($callbottom{$format}) && @output;
+
+## print the summary
+printf STDERR "Done: %d lines, %d loci", $totalcount, $count;
+printf STDERR ", %d total length", $total_len if @output;
+printf STDERR ", %d polymorphic loci", $polymorphic if $include_fixed;
+print  STDERR "\nNum\tName\tHomozygotes\tHeterozygotes\n";
+foreach my $i (@chosen_specimens) {
+	printf STDERR "%d\t%s\t%d\t%d\n", $i + 1, $specimens[$i], $homoz[$i], $heteroz[$i];
+}
+
+
 ## BEGIN subs
+
+sub parse_popul {
+	my $file = shift;
+	open POPUL, '<', $file or die "Couldn't open file '$file'\n";
+	my %samples;
+	while (<POPUL>) {
+		chomp;
+		my @parts = split;
+		$samples{$parts[0]} = $parts[1];
+	}
+	return %samples;
+}
 
 ## argument parsing callbacks for different formats
 
@@ -254,6 +395,11 @@ sub args_ped {
 	$explode = 1;
 	$fill = 0;
 	$phased = 1;
+}
+
+## header callbacks for different formats
+sub header_tsv {
+	print $header;
 }
 
 ## processing callbacks for different formats
@@ -284,6 +430,9 @@ sub process_ped {
 	push(@output2, [@chr2]);
 	push(@loci, $locus);
 }
+sub process_tsv {
+	printf "%s\n", $row;
+}
 
 ## parse the header line of the input
 sub parse_header {
@@ -308,7 +457,9 @@ sub parse_header {
 			$include_tax[$i] = 1;
 		}
 		push(@chosen_specimens, $i);
-		print STDERR "Warning: no population specified for specimen '$specimen'\n" if %popul && !defined($popul{$specimen}); 
+		if ($popul_file && !defined($popul{$specimen})) {
+			print STDERR "Warning: no population specified for specimen '$specimen'\n" ;
+		}
 	}
 	$first_specimen = $chosen_specimens[0];
 	return 1;
@@ -415,7 +566,7 @@ sub make_ambig {
 
 # filter genotypic data for the current locus: break into SNPs, discard doubles etc
 sub filter_output {
-	return 1 if !$explode && !$major && !$nodoubles && !$encode_snp;
+	return 1 if !$explode && !$major && !$nodoubles && !$encode_snp && !$firstsnp;
 	my @alleles;
 	my @patterns;
 	my @prev_snps;
@@ -451,9 +602,10 @@ sub filter_output {
 			}
 		}
 	}
+	my $snpnum = $#{$out1[$first_specimen]};
 	## filtering out of the SNPs with minor alleles
 	if ($major) {
-		for my $k (0..$#{$out1[$first_specimen]}) {
+		for my $k (0..$snpnum) {
 			my $c = 0;
 			foreach my $count (values %{$alleles[$k]}) {
 				$c += ($count >= $major);
@@ -480,7 +632,22 @@ sub filter_output {
 			}
 		}
 	}
-	return 0 if !@{out1[$first_specimen]};
+	## if only a single SNP is to be sampled
+	if ($firstsnp) {
+		for my $k1 (0..$snpnum) {
+			next if !$out1[$first_specimen][$k1];
+			last if $k1 == $snpnum;
+			foreach my $k2 ($k1 + 1..$snpnum) {
+				foreach my $i (@chosen_specimens) {
+					delete $out1[$i][$k2];
+					delete $out2[$i][$k2];
+				}
+			}
+			last;
+		}
+	}
+	
+	return 0 if !scalar(grep { defined $_ } @{$out1[$first_specimen]});
 	@chr1 = @out1;
 	@chr2 = @out2 if $phased;
 	return 1;
@@ -643,95 +810,3 @@ begin taxa;
 
 ## END subs
 
-print STDERR "stacks2fasta started\n";
-my $j = 0;
-
-my $fh;
-if ($ARGV[0] eq '-') {
-	open $fh, '-' or die "Couldn't read from STDIN";
-}
-else {
-	open $fh, '<', $ARGV[0] or die "Couldn't open $ARGV[0]";
-}
-
-my $header = <$fh>;
-die("The input seems to have incorrect format\n") if !parse_header($header);
-
-## reading the input data
-ROW: while (<$fh>) {
-	chomp;
-	@cols = split(/\t/);
-	next if $#cols < 12;
-	next if !$include_fixed && $cols[8] eq ""; 
-	$consensus = $cols[4];
-	parse_snps($cols[8]);
-	@genotypes = @cols[12..($#specimens + 12)];
-
-	my $g_count = -1;
-	$lim_stack = 0;
-	@current_heteroz = ();
-	@current_homoz = ();
-	## iterate over genotypes
-	foreach my $genotype (@genotypes) {
-		$g_count++;
-		next if defined($exclude_tax[$g_count]);
-		## if no genotype is specified
-		if (!defined($genotype) || $genotype eq '') {
-			next ROW if $include_tax[$g_count];
-			no_data($g_count);
-		}
-		else {
-			$lim_stack++;
-			## if the genotype is like in consensus
-			if ($genotype eq 'consensus') {
-				like_in_consensus($g_count);
-			}
-			## if the genotype is specified explicitely
-			else {
-				next ROW if !parse_alleles($genotype, $g_count);
-			}
-			$actual_alleles{$chr1[$g_count]}++;
-			$actual_alleles{$chr2[$g_count]}++ if $phased;
-		}
-	}
-	@all_alleles = keys %actual_alleles;
-	## skip the locus if it doesn't satisfy our criteria
-	next if !$include_fixed && !$#all_alleles;
-	next if $allmax > 0 && ($#all_alleles <= $allmin || $#all_alleles + 1 > $allmax);
-	next if $lim_stack < $limit;
-
-	## filter the output and call the processing sub
-	next if !filter_output();
-
-	$polymorphic += ($#all_alleles > 0);
-	$locus = $.;
-	$callprocess{$format}->($.) if defined($callprocess{$format});
-
-	## increment zygosities
-	foreach my $i (@chosen_specimens) {
-		$homoz[$i]   += defined($current_homoz[$i])   ? $current_homoz[$i]   : 0;
-		$heteroz[$i] += defined($current_heteroz[$i]) ? $current_heteroz[$i] : 0;
-	}
-	$count++;
-} continue {
-	$totalcount++;
-	@chr1 = ();
-	@chr2 = ();
-	%actual_alleles = ();
-}
-
-## calculate total length of the alignment
-for my $loc (0..$count-1) {
-	$total_len += length(join("", @{$output[$loc][$first_specimen]}));
-}
-
-## call the bottom callback
-$callbottom{$format}->() if defined($callbottom{$format}) && @output;
-
-## print the summary
-printf STDERR "Done: %d lines, %d loci, %d total length", $totalcount, $count, $total_len;
-printf STDERR ", %d polymorphic loci", $polymorphic if $include_fixed;
-printf STDERR "\nNum\tName\tHomozygotes\tHeterozygotes\n", $totalcount, $count;
-foreach my $i (@chosen_specimens) {
-	printf STDERR "%d\t%s\t%d\t%d\n", $i + 1, $specimens[$i], $homoz[$i], $heteroz[$i];
-}
