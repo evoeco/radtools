@@ -204,8 +204,8 @@ if ($#ARGV > 0) {
 	}
 	if (defined($args{-samplesnp})) {
 		die "-samplesnp random is not yet implemented\n" if $args{-samplesnp} eq "random";
-		die "Unexpected value for -samplesnp\n" if $args{-samplesnp} ne "first";
-		$firstsnp = 1;
+		die "Unexpected value for -samplesnp\n" if $args{-samplesnp} && $args{-samplesnp} ne "first";
+		$firstsnp = ($args{-samplesnp} eq "first");
 		delete($args{-samplesnp});
 	}
 	foreach my $key (keys %args) {
