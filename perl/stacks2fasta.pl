@@ -18,8 +18,8 @@
 use strict;
 use warnings;
 
-my $ver = "2.5";
-printf STDERR "This is stacks2fasta script ver. %d\n", $ver;
+my $ver = "2.5.1";
+printf STDERR "This is stacks2fasta script ver. %s\n", $ver;
 print STDERR "Written by Andrey Rozenberg, Ruhr-Universitaet Bochum and distributed under GNU GPL v. 3\n";
 print STDERR "Cite as:
 Macher J et al (2015). Assessing the phylogeographic history of the montane caddisfly Thremma gallicum using mitochondrial and restriction-site-associated DNA (RAD) markers. Ecology and Evolution 5(3): 648–662, doi:10.1002/ece3.1366\n";
@@ -269,7 +269,7 @@ else {
 }
 
 $header = <$fh>;
-die("The input seems to have incorrect format\n") if !parse_header($header);
+die "The input seems to have incorrect format\n" if !parse_header($header);
 
 %popul = parse_popul($popul_file) if $popul_file;
 
@@ -388,12 +388,12 @@ sub args_snp {
 	$encode_snp = 1;
 }
 sub args_pop {
-	$fill = 0;
+	$fill = "0";
 	$phased = 1;
 }
 sub args_ped {
 	$explode = 1;
-	$fill = 0;
+	$fill = "0";
 	$phased = 1;
 }
 
@@ -468,7 +468,7 @@ sub parse_header {
 ## no data available for this individual at the current locus
 sub no_data {
 	my $g_count = shift;
-	if ($fill) {
+	if ($fill ne '') {
 		my $seq;
 		if ($snps_only) {
 			$seq = $fill x $len;
