@@ -96,7 +96,7 @@ my %ambig_map = (
 
 if (!@ARGV) {
 	print STDERR "No input file specified\n";
-	print STDERR "\nstacks2fasta.pl INPUT [OPTIONS] > OUTPUT\n";
+	printf STDERR "\n%s INPUT [OPTIONS] > OUTPUT\n", $0;
 	print STDERR "
    INPUT:
      tsv file produced by export_sql.pl ('-' for STDIN)
@@ -107,16 +107,26 @@ if (!@ARGV) {
     -outg      - take only those loci, which are genotyped in these individuals             [comma-separated list of names, default: no preferences]
     -excl      - discard these individuals                                                  [comma-separated list of names, default: include everything]
     -popul     - population assignments                                                     [file with pairs 'sample population']
-    -fill      - substitute data-missing-positions with this symbol ('\"?\"' for '?')        [Default: 0 (the whole locus filled with '-')]
+    -fill      - substitute data-missing-positions with this symbol                         [Default: '' (the whole locus filled with '-')]
     -data      - data to output:                                                            [Default: snps]
-       variable positions only (snps), whole loci (whole) or whole loci including fixed positions (whole-all)
-    -explode   - output each nucleotide position as separate locus (for -data snps only)    [Default: 0]
+       variable positions only ('snps')
+       whole loci (whole)
+       whole loci including fixed positions (whole-all)
+    -explode   - output each nucleotide position as separate locus (for '-data snps' only)  [Default: 0]
     -form      - output format:                                                             [Default: fa]
-       Arlequin (arp), Fasta (fa/fas), Mega (meg), Nexus (nex), DIYABC GenePop (pop), DIYABC SNP (snp), PED (ped), Stacks TSV (tsv)
+       Arlequin ('arp')
+       Fasta ('fa'/'fas')
+       Mega ('meg')
+       Nexus ('nex')
+       DIYABC GenePop ('pop')
+       DIYABC SNP ('snp')
+       PED ('ped')
+       Stacks TSV ('tsv')
     -major     - filter out minor alleles with this frequency threshold (absolute number)   [Default: 0 (no filtering)]
     -nodoubles - filter out SNPs with the same pattern in the same locus                    [Default: 0 (no filtering)]
-    -samplesnp - pick up single SNP per each locus:                                         [Default: 0]
-       first SNP (first)
+    -samplesnp - pick up only one SNP per locus:                                            [Default: 0]
+       first SNP ('first')
+       random SNP ('random') - not implemented yet
     -ploidy    - expected ploidy level                                                      [Default: 2]
 ";
 	exit;
