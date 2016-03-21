@@ -96,7 +96,7 @@ my %ambig_map = (
 
 if (!@ARGV) {
 	print STDERR "No input file specified\n";
-	printf STDERR "\n%s INPUT [OPTIONS] > OUTPUT\n", $0;
+	print STDERR "\nstacks2fasta INPUT [OPTIONS] > OUTPUT\n";
 	print STDERR "
    INPUT:
      tsv file produced by export_sql.pl ('-' for STDIN)
