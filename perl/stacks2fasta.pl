@@ -101,7 +101,7 @@ if (!@ARGV) {
    INPUT:
      tsv file produced by export_sql.pl ('-' for STDIN)
    OPTIONS:
-     -lim      - minimal number of samples required for a locus to be reported              [Default: 0 (without limit)]
+    -lim       - minimal number of samples required for a locus to be reported              [Default: 0 (without limit)]
     -alls      - min,max interval for the number of alleles per locus                       [Default: without limit]
     -snps      - min,max interval for the number of SNPs per locus                          [Default: without limit]
     -outg      - take only those loci, which are genotyped in these individuals             [comma-separated list of names, default: no preferences]

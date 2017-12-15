@@ -20,7 +20,7 @@ use warnings;
 
 my %args = @ARGV;
 
-my $verion = "1.3";
+my $verion = "1.6";
 
 if (!@ARGV or defined($args{-h}) or defined($args{-v})) {
 	print STDERR "preprocess_ddradtags.pl version $verion
@@ -78,6 +78,7 @@ else {
 }
 if (defined($args{-i})) {
 	$orig_dbr = $args{-i};
+	die("The DBR sequence '$orig_dbr' seems to be incorrect\n") if $orig_dbr !~ /^[ACGTRYMKBDHVN]+$/;
 	delete($args{-i});
 }
 else {
@@ -172,17 +173,14 @@ my ($lline, $l, $lh, $ls, $lq, $lcut, $bl_chosen, $b_chosen);
 my ($rline, $r, $rh, $rs, $rq, $rcut, $i_offset,  $i_chosen);
 my ($subseq, $seq, $subseq1, $subseq2, $subseq3);
 my (@no_dbrs, @i_shifts);
-my $no_dbr;
+my ($no_dbr, $is_dup);
 my $i_shift;
 my %loci;
 my ($locus, $mask);
 my @i_rescue;
 
-
 read_barcodes();
 read_dbr();
-
-## BEGIN FILES ##
 
 my $lin = openin($lfile);
 my $rin = openin($rfile);
@@ -219,22 +217,6 @@ foreach my $k (0..$#barcodes) {
 $LWOB = openout("$lfile.wob");
 $RWOB = openout("$rfile.wob");
 
-## END FILES ##
-
-my $eof;
-
-$lline = <$lin>;
-$rline = <$rin>;
-
-die("Input files have wrong format\n") if (substr($lline, 0, 1) ne '@' or substr($rline, 0, 1) ne '@');
-$lh = substr($lline, 1);
-$rh = substr($rline, 1);
-chomp $lh;
-chomp $rh;
-my $is_dup = 0;
-
-## fastq parsing: get the lines simultaneously for the left- and the right-read files ##
-
 my $wbic = 0;
 my $wobc = 0;
 my $woic = 0;
@@ -246,20 +228,18 @@ my $rurc = 0;
 my $total = 0;
 
 my $time;
-while (!$eof) {
+while (!eof($lin) && !eof($rin)) {
 	report_time() if ++$total % 1000000 == 0;
-	push(@lfq, scalar <$lin>) foreach (0..3);
-	push(@rfq, scalar <$rin>) foreach (0..3);
-	$eof = (eof($lin) or eof($rin) or !$lline or !$rline);
 	$lh = <$lin>;
 	$rh = <$rin>;
 	$ls = <$lin>;
 	$rs = <$rin>;
-	die("The files are out of phase at line $.\n") if <$lin> ne "+" || <$rin> ne "+";
+	die("The files are out of phase at line $.\n") if <$lin> ne "+\n" || <$rin> ne "+\n";
 	$lq = <$lin>;
 	$rq = <$rin>;
 	chomp($ls, $rs, $lh, $rh, $lq, $rq);
 	$is_dup = 0;
+	$no_dbr = 0;
 	$bl_chosen = find_similar_barcode($ls);
 	if ($bl_chosen >= 0) {
 		$ls = substr($ls, $bl_chosen, $lt);
@@ -274,7 +254,8 @@ while (!$eof) {
 			if ($i_offset >= 0) {
 				$rs = substr($rs, $i_offset, $rt);
 				$rq = substr($rq, $i_offset, $rt);
-				$rh .= " ".$i_chosen if !($is_dup = is_duplicate($rs));
+				$is_dup = is_duplicate($rs);
+				$rh .= " ".$i_chosen if !$is_dup;
 			}
 		}
 	}
@@ -286,38 +267,38 @@ while (!$eof) {
 		$l = sprintf("%s\n%s\n+\n%s\n", $lh, $ls, $lq);
 		$r = sprintf("%s\n%s\n+\n%s\n", $rh, $rs, $rq);
 		if ($bl_chosen < 0) {
-			print { $LWOB } @lfq;
-			print { $RWOB } @rfq;
+			print { $LWOB } $l;
+			print { $RWOB } $r;
 			$wobc++;
 		}
 		elsif ($no_dbr) {
-			print { $LNOI{$b_chosen} } @lfq;
-			print { $RNOI{$b_chosen} } @rfq;
+			print { $LNOI{$b_chosen} } $l;
+			print { $RNOI{$b_chosen} } $r;
 			$noic++;
 		}
 		elsif ($i_offset < 0) {
-			print { $LWOI{$b_chosen} } @lfq;
-			print { $RWOI{$b_chosen} } @rfq;
+			print { $LWOI{$b_chosen} } $l;
+			print { $RWOI{$b_chosen} } $r;
 			$woic++;
 		}
 		elsif ($lrest && index($ls, $lrest) > -1) {
-			print { $LLUR{$b_chosen} } @lfq;
-			print { $RLUR{$b_chosen} } @rfq;
+			print { $LLUR{$b_chosen} } $l;
+			print { $RLUR{$b_chosen} } $r;
 			$lurc++;
 		}
 		elsif ($rrest && index($rs, $rrest) > -1) {
-			print { $LRUR{$b_chosen} } @lfq;
-			print { $RRUR{$b_chosen} } @rfq;
+			print { $LRUR{$b_chosen} } $l;
+			print { $RRUR{$b_chosen} } $r;
 			$rurc++;
 		}
 		elsif (length($ls) < $lt || length($rs) < $rt) {
-			print { $LABB{$b_chosen} } @lfq;
-			print { $RABB{$b_chosen} } @rfq;
+			print { $LABB{$b_chosen} } $l;
+			print { $RABB{$b_chosen} } $r;
 			$abbc++;
 		}
 		else {
-			print { $LWBI{$b_chosen} } @lfq;
-			print { $RWBI{$b_chosen} } @rfq;
+			print { $LWBI{$b_chosen} } $l;
+			print { $RWBI{$b_chosen} } $r;
 			$wbic++;
 		}
 	}
@@ -435,7 +416,7 @@ sub read_barcodes {
  			$bl = $line;
 			next;
 		}
-		die("The barcode file has incorrect format. At least three fields expected: the barcode, the presence-of-DBR-flag, P7 offset\n") if ($line !~ /^[ATGCX]+\s+(1|0)\s+\d(\s+\w+)?$/);
+		die("The barcode file has incorrect format. At least three fields expected: the barcode, the presence-of-DBR-flag, P7 offset\n") if ($line !~ /^[ATGC]+\s+(1|0)\s+\d(\s+\w+)?$/);
 		@parts = split ' ', $line;
 		$b = $parts[0];
 		push(@all_barcodes, $b);
@@ -494,7 +475,7 @@ sub read_dbr {
 	for my $pos (0..$#i_bases) {
 		my $i_base = $i_bases[$pos];
 		next if $i_base eq 'N';
-		$i_base =~ tr/ACGTRYMKBDHVYR/BDHVYRKMACGTRY/;
+		$i_base =~ tr/ACGTRYMKBDHV/BDHVYRKMACGT/;
 		push(@i_rescue, prepare_dbr(substr($orig_dbr, 0, $pos).$i_base.substr($orig_dbr, $pos + 1)) );
 	}
 }
@@ -597,5 +578,5 @@ sub openout {
 
 sub report_time {
 	$time = time() - $start_time;
-	printf STDERR "Read #%d, %d sec, %d reads/sec\n", $c_total, $time, $c_total / $time if $time > 0;
+	printf STDERR "Read #%d, %d sec, %d reads/sec\n", $total, $time, $total / $time if $time > 0;
 }

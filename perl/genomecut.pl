@@ -35,14 +35,14 @@ Arguments:
 	-fq - input data in (optionally gzipped) fastq format ('-' for STDIN)
 	-t  - task, one of
 		'dist'  - distribution of recognition sites          (single digest)
+		'lens'  - sequence lengths for restriction fragments (double or single digest)
 		'frag'  - sequences        for restriction fragments (double digest)
-		'lens'  - sequence lengths for restriction fragments (double digest)
-		'ldist' - summary for 'lens'                         (double digest)
+		'ldist' - summary for 'lens'			 (double digest)
 	-min - minimal length of restriction fragments
 	-max - maximal length of restriction fragments
 	-cat - concatenate all input sequences before cutting
 	-l   - minimal input sequence length for digest
-        -no  - remove N's before cutting the sequences
+	-no  - remove N's before cutting the sequences
 	-h   - show this manual\n";
 	exit 0;
 }
@@ -202,11 +202,19 @@ sub do_lens {
 	my $frag_len;
 	add_seqlen($len, $gc, $seq_len);
 	foreach my $p1 (@pat1) {
-		foreach my $p2 (@pat2) {
-			while ($seq =~ /($p1(?:(?:(?!$p2|$p1).)+)$p2|$p2(?:(?:(?!$p1|$p2).)+)$p1)/g) {
-				$frag_len = length($1);
+		if (@pat2) {
+			foreach my $p2 (@pat2) {
+				while ($seq =~ /($p1(?:(?:(?!$p2|$p1).)+)$p2|$p2(?:(?:(?!$p1|$p2).)+)$p1)/g) {
+					$frag_len = length($1);
+					($frag_len < $min || $max && $frag_len > $max) && next;
+					printf "%s\t%s\t%s\n", $enz{$p1}, $enz{$p2}, $frag_len;
+				}
+			}
+		} else {
+			foreach my $frag (split(/$p1/, $seq)) {
+				$frag_len = length($frag);
 				($frag_len < $min || $max && $frag_len > $max) && next;
-				printf "%s\t%s\t%s\n", $enz{$p1}, $enz{$p2}, $frag_len;
+				printf "%s\t-\t%s\n", $enz{$p1}, $frag_len;
 			}
 		}
 	}
@@ -220,13 +228,23 @@ sub do_ldist {
 	my $frag_len;
 	add_seqlen($len, $gc, $seq_len);
 	foreach my $p1 (@pat1) {
-		foreach my $p2 (@pat2) {
-			while ($seq =~ /($p1(?:(?:(?!$p2|$p1).)+)$p2|$p2(?:(?:(?!$p1|$p2).)+)$p1)/g) {
-				$frag_len = length($1);
+		if (@pat2) {
+			foreach my $p2 (@pat2) {
+				while ($seq =~ /($p1(?:(?:(?!$p2|$p1).)+)$p2|$p2(?:(?:(?!$p1|$p2).)+)$p1)/g) {
+					$frag_len = length($1);
+					($frag_len < $min || $max && $frag_len > $max) && next;
+					$frag_total{$p1}{$p2}    += $frag_len;
+					$frag_total_sq{$p1}{$p2} += $frag_len * $frag_len;
+					$frag_n{$p1}{$p2}++;
+				}
+			}
+		} else {
+			foreach my $frag (split(/$p1/, $seq)) {
+				$frag_len = length($frag);
 				($frag_len < $min || $max && $frag_len > $max) && next;
-				$frag_total{$p1}{$p2}    += $frag_len;
-				$frag_total_sq{$p1}{$p2} += $frag_len * $frag_len;
-				$frag_n{$p1}{$p2}++;
+				$frag_total{$p1}{"-"}    += $frag_len;
+				$frag_total_sq{$p1}{"-"} += $frag_len * $frag_len;
+				$frag_n{$p1}{"-"}++;
 			}
 		}
 	}
@@ -235,7 +253,7 @@ sub do_ldist {
 sub add_seqlen {
 	$atgc_total += shift;
 	$gc_total   += shift;
-	my $seq_len = shift;
+	my $seq_len  = shift;
 	$len_total    += $seq_len;
 	$len_total_sq += $seq_len * $seq_len;
 	$seq_n++;
@@ -344,21 +362,25 @@ printf STDERR "GC%% - %.3f\n", $gcf;
 if ($t eq "ldist") {
 	printf "%-10s\t%-10s\t%-8s\t%-8s\t%-8s\t%-8s\t%-8s\n", "R1", "R2", "Mean len", "SD", "N", "N/bp", "N/Mb";
 	foreach my $p1 (@pat1) {
+		if (!@pat2) {
+			@pat2 = ("-");
+			$enz{"-"} = "-";
+		}
 		foreach my $p2 (@pat2) {
-                        printf "%-10s\t%-10s\t", $enz{$p1}, $enz{$p2};
-                        my $n = 0;
-                        my $s = 0;
-                        my $f = 0;
-                        my $sd = 0;
-                        my $avlen = 0;
-                        if (defined($frag_n{$p1}{$p2})) {
-                                $n = $frag_n{$p1}{$p2};
-                                $s = $frag_total{$p1}{$p2};
-                                $f = $n / $len_total;
-                                $sd = stdev($n, $s, $frag_total_sq{$p1}{$p2});
-                                $avlen = $s / $n;
-                        }
-                        printf "%-8.2f\t%-8.2f\t%-8d\t%f\t%-8.1f\n", $avlen, $sd, $n, $f, $f * 1000000;
+			printf "%-10s\t%-10s\t", $enz{$p1}, $enz{$p2};
+			my $n = 0;
+			my $s = 0;
+			my $f = 0;
+			my $sd = 0;
+			my $avlen = 0;
+			if (defined($frag_n{$p1}{$p2})) {
+			        $n  = $frag_n{$p1}{$p2};
+			        $s  = $frag_total{$p1}{$p2};
+			        $f  = $n / $len_total;
+			        $sd = stdev($n, $s, $frag_total_sq{$p1}{$p2});
+			        $avlen = $s / $n;
+			}
+			printf "%-8.2f\t%-8.2f\t%-8d\t%f\t%-8.1f\n", $avlen, $sd, $n, $f, $f * 1000000;
 		}
 	}
 }
@@ -381,4 +403,3 @@ elsif ($t eq "dist") {
 		printf "%-10s\t%-7d\t%-10f\t%-10.1f\t%-7.f\t%-10f\t%-10.1f\n", $enz{$p}, $obs_raw, $obs, $obs * 1000000, $exp_raw, $exp, $exp * 1000000;
 	}
 }
-
