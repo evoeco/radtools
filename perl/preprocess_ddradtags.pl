@@ -226,6 +226,7 @@ my $abbc = 0;
 my $lurc = 0;
 my $rurc = 0;
 my $total = 0;
+my ($lplus, $rplus);
 
 my $time;
 while (!eof($lin) && !eof($rin)) {
@@ -234,7 +235,12 @@ while (!eof($lin) && !eof($rin)) {
 	$rh = <$rin>;
 	$ls = <$lin>;
 	$rs = <$rin>;
-	die("The files are out of phase at line $.\n") if <$lin> ne "+\n" || <$rin> ne "+\n";
+	$lplus = <$lin>;
+	chomp $lplus;
+	die "Left file out of phase at line $.: $lplus\n" if $lplus ne "+";
+	$rplus = <$rin>;
+	chomp $rplus;
+	die "Right file out of phase at line $.: $rplus\n" if $rplus ne "+";
 	$lq = <$lin>;
 	$rq = <$rin>;
 	chomp($ls, $rs, $lh, $rh, $lq, $rq);
